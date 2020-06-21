@@ -15,22 +15,56 @@ const pie = d3.pie()
     .sort(null)
     // use cost to determine pie angle
     .value(d => d.cost);
-
-// const angles = pie([
-//     { name: 'rent', cost: 500 },
-//     { name: 'bills', cost: 300 },
-//     { name: 'gaming', cost: 200 }
-//     ]);
     
 const arcPath = d3.arc()
     .outerRadius(dims.radius)
     .innerRadius(dims.radius / 2);
 
+const color = d3.scaleOrdinal(d3['schemeSet3']);
+
+// legend setup
+const legendGroup = svg.append('g')
+.attr('transform', `translate(${dims.width + 40}, 10)`)
+
+const legend = d3.legendColor()
+    .shape('circle')
+    .shapePadding(10)
+    .scale(color);
+
 // update function
 const update = (data) => {
 
-    console.log(data);
+    // update color scale domain
+    color.domain(data.map(d => d.name));
 
+    // update & call legend
+    legendGroup.call(legend);
+    legendGroup.selectAll('text').attr('fill', 'white')
+
+    // join enhanced (pie) data to path elements
+    const paths = graph.selectAll('path')
+        .data(pie(data));
+
+    // handle exit selection
+    paths.exit()
+        .transition().duration(750)
+        .attrTween("d", arcTweenExit)
+        .remove();
+
+    // handle current DOM path updates
+    paths.attr('d', arcPath)
+    .transition().duration(750)
+    .attrTween('d', arcTweenUpdate);
+
+    paths.enter()
+        .append('path')
+        .attr('class', 'arc')
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 2)
+        .attr('fill', d => color(d.data.name))
+        .each(function(d){ this._current = d })
+        .transition().duration(750)
+            .attrTween("d", arcTweenEnter);
 }
 
 //  data array and firestore
@@ -62,3 +96,38 @@ db.collection('expenses').onSnapshot(res => {
     update(data);
 
 })
+
+//  Tween
+const arcTweenEnter = (d) => {
+    var i = d3.interpolate(d.endAngle, d.startAngle);
+
+    return function(t){
+        d.startAngle = i(t);
+        return arcPath(d);
+    }
+}
+
+const arcTweenExit = (d) => {
+    var i = d3.interpolate(d.startAngle, d.endAngle);
+
+    return function(t){
+        d.startAngle = i(t);
+        return arcPath(d);
+    }
+}
+
+// use function keyword to allow use of 'this'
+function arcTweenUpdate(d){
+
+    // interpolate between objects
+    var i = d3.interpolate(this._current, d);
+
+    // update current prop with new updated data
+    this._current = d;
+
+    return function(t){
+        return arcPath(i(t));
+    }
+
+    // console.log(this._current, d);
+}
